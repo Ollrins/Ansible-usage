@@ -172,3 +172,5 @@ ssh rocky@<VECTOR_IP> "vector --version"
 # Проверка Lighthouse
 curl http://<LIGHTHOUSE_IP>
 ```
+<br>
+[Исходный код](https://github.com/Ollrins/Ansible-usage/tree/main/src "Ссылка на GitHub")
