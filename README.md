@@ -27,7 +27,9 @@
   <em>ansible-playbook -i prod.yml site.yml --diff</em>
 </p>
 
-
+<br>
+[Исходный код](https://github.com/Ollrins/Ansible-usage/tree/main/src "Ссылка на GitHub")
+<br>
 
 Данный playbook предназначен для автоматической установки и настройки трех сервисов на отдельных хостах в Yandex Cloud:
 
@@ -57,9 +59,9 @@ site.yml # Главный playbook  <br>
 - Rocky Linux 9 на целевых хостах
 - Права sudo на целевых хостах
 
-## Параметры
+#### Параметры
 
-### Переменные для ClickHouse
+#### Переменные для ClickHouse
 
 | Переменная | Описание | Значение по умолчанию |
 |------------|----------|----------------------|
@@ -172,5 +174,4 @@ ssh rocky@<VECTOR_IP> "vector --version"
 # Проверка Lighthouse
 curl http://<LIGHTHOUSE_IP>
 ```
-<br>
-[Исходный код](https://github.com/Ollrins/Ansible-usage/tree/main/src "Ссылка на GitHub")
+
