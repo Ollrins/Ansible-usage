@@ -1,0 +1,188 @@
+---
+- name: Install and configure Clickhouse
+  hosts: clickhouse
+  become: true
+  tags:
+    - clickhouse
+  vars:
+    clickhouse_version: "24.8.13.16"
+  handlers:
+    - name: Start clickhouse service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - curl
+          - wget
+          - ca-certificates
+          - libtool
+          - unixODBC
+          - which
+        state: present
+
+    - name: Download ClickHouse common static package
+      ansible.builtin.get_url:
+        url: "https://packages.clickhouse.com/rpm/stable/clickhouse-common-static-{{ clickhouse_version }}.x86_64.rpm"
+        dest: "/tmp/clickhouse-common-static.rpm"
+        mode: '0644'
+        validate_certs: false
+
+    - name: Download ClickHouse client package
+      ansible.builtin.get_url:
+        url: "https://packages.clickhouse.com/rpm/stable/clickhouse-client-{{ clickhouse_version }}.x86_64.rpm"
+        dest: "/tmp/clickhouse-client.rpm"
+        mode: '0644'
+        validate_certs: false
+
+    - name: Download ClickHouse server package
+      ansible.builtin.get_url:
+        url: "https://packages.clickhouse.com/rpm/stable/clickhouse-server-{{ clickhouse_version }}.x86_64.rpm"
+        dest: "/tmp/clickhouse-server.rpm"
+        mode: '0644'
+        validate_certs: false
+
+    - name: Install ClickHouse packages
+      ansible.builtin.dnf:
+        name:
+          - /tmp/clickhouse-common-static.rpm
+          - /tmp/clickhouse-client.rpm
+          - /tmp/clickhouse-server.rpm
+        state: present
+        disable_gpg_check: true
+      notify: Start clickhouse service
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for clickhouse server to start
+      ansible.builtin.wait_for:
+        port: 8123
+        host: localhost
+        delay: 5
+        timeout: 30
+        state: started
+
+    - name: Create database
+      ansible.builtin.command:
+        cmd: clickhouse-client -q 'create database logs;'
+      register: create_db
+      failed_when: (create_db.rc != 0) and (create_db.rc != 82)
+      changed_when: create_db.rc == 0
+
+- name: Install and configure Vector
+  hosts: vector
+  become: true
+  tags:
+    - vector
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - curl
+          - wget
+          - dnf-plugins-core
+        state: present
+
+    - name: Run Vector official setup script
+      ansible.builtin.shell:
+        cmd: |
+          bash -c "$(curl -fsSL https://setup.vector.dev)"
+        creates: /etc/yum.repos.d/vector.repo
+
+    - name: Install Vector package
+      ansible.builtin.dnf:
+        name: vector
+        state: present
+        update_cache: true
+
+    - name: Create Vector config directory
+      ansible.builtin.file:
+        path: /etc/vector
+        state: directory
+        mode: '0755'
+
+    - name: Create Vector config
+      ansible.builtin.template:
+        src: vector.toml.j2
+        dest: /etc/vector/vector.toml
+        mode: '0644'
+      notify: Restart vector
+
+    - name: Start Vector service
+      ansible.builtin.systemd:
+        name: vector
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Restart vector
+      ansible.builtin.systemd:
+        name: vector
+        state: restarted
+
+- name: Install and configure Lighthouse
+  hosts: lighthouse
+  become: true
+  tags:
+    - lighthouse
+  vars:
+    lighthouse_repo: "https://github.com/VKCOM/lighthouse.git"
+    lighthouse_dir: "/var/www/lighthouse"
+  tasks:
+    - name: Gather SELinux facts
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - selinux
+
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - git
+          - nginx
+          - policycoreutils-python-utils
+        state: present
+
+    - name: Clone Lighthouse repository
+      ansible.builtin.git:
+        repo: "{{ lighthouse_repo }}"
+        dest: "{{ lighthouse_dir }}"
+        version: master
+        force: true
+
+    - name: Configure Nginx for Lighthouse
+      ansible.builtin.template:
+        src: lighthouse_nginx.conf.j2
+        dest: /etc/nginx/conf.d/lighthouse.conf
+        mode: '0644'
+      notify: Restart nginx
+
+    - name: Set SELinux context for Lighthouse files
+      ansible.builtin.shell:
+        cmd: "chcon -R -t httpd_sys_content_t {{ lighthouse_dir }}"
+      when: ansible_selinux.status == "enabled"
+      changed_when: false
+
+    - name: Set SELinux boolean for httpd
+      ansible.builtin.seboolean:
+        name: httpd_read_user_content
+        state: true
+        persistent: true
+      when: ansible_selinux.status == "enabled"
+
+    - name: Start and enable Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted

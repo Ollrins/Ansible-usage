@@ -1,0 +1,15 @@
+[sources.clickhouse_logs]
+type = "file"
+include = ["/var/log/clickhouse-server/*.log"]
+read_from = "beginning"
+
+[sinks.console]
+type = "console"
+inputs = ["clickhouse_logs"]
+encoding.codec = "text"
+
+[sinks.file]
+type = "file"
+inputs = ["clickhouse_logs"]
+path = "/var/log/vector/collected.log"
+encoding.codec = "text"
